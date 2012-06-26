@@ -1,0 +1,46 @@
+Cython wrapper by Colin Lea
+June 2012
+
+Quickshift algorithm is part of vlfeat: http://www.vlfeat.org/
+Copyright (C) 2007-12, Andrea Vedaldi and Brian Fulkerson
+All rights reserved.
+
+--Requirements--
+Python 2.x (tested with 2.7)
+Numpy 1.x (tested with 1.7)
+Cython
+VlFeat (tested with 0.9.14)
+--Optional requirement-- 
+Image python module
+IPython
+
+--Compilation--
+Download VLFeat from http://www.vlfeat.org/
+put the pyQuickshift folder in ../vlfeat/vl/
+Run the following in the pyQuickshift folder:
+python setup.py build_ext --inplace
+
+--Example Usage--
+# Run this in ipython with command "ipython qtconsole --pylab" to show output image
+import Image
+import numpy as np
+import pyQuickShift as qs
+
+imgRaw = Image.open('/Users/colin/libs/vlfeat/data/a.jpg')
+imgRGB = np.array(imgRaw, dtype=uint8)
+img = np.ascontiguousarray(imgRaw, dtype=np.double)
+
+if 0:
+	labels, dists, density = qs.quickshift_3D(img*.5, 2, 20)
+else:
+	im2D = np.ascontiguousarray(img[:,:,2], dtype=double)
+	labels, dists, density = qs.quickshift_2D(im2D*.5, 2, 20)
+
+print "There are", len(unique(labels)), "superpixels"
+
+if len(unique(labels)) < 10000:
+	imgColor = np.empty_like(imgRGB)
+	for l in unique(labels):
+		imgColor[labels==l] = imgRGB[labels==l].mean(0)
+		# imgColor[labels==l] = imgRGB[l/img.shape[1], l-img.shape[1]*(l/img.shape[1])]#imgRGB[labels==l]		
+	imshow(imgColor)

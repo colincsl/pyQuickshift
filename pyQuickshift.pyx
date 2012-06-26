@@ -28,19 +28,21 @@ import pyQuickShift as qs
 
 imgRaw = Image.open('/Users/colin/libs/vlfeat/data/a.jpg')
 imgRGB = np.array(imgRaw, dtype=uint8)
-img = np.array(imgRaw, dtype=double)
-# img = img.reshape([img.shape[2], img.shape[0], img.shape[1]])
+img = np.ascontiguousarray(imgRaw, dtype=np.double)
 
-im2D = np.copy(img[:,:,2])
-# labels, dists, density = qs.quickshift_2D(im2D*.5, 2, 20)
-labels, dists, density = qs.quickshift_3D(img*.05, 2, 20)
+if 0: # 3 channel
+	labels, dists, density = qs.quickshift_3D(img*.5, 2, 20) # Image, kernel size, maxDistance
+else: # 1 channel
+	im2D = np.ascontiguousarray(img[:,:,2], dtype=double)
+	labels, dists, density = qs.quickshift_2D(im2D*.5, 2, 20) # Image, kernel size, maxDistance
 
 print "There are", len(unique(labels)), "superpixels"
 
+#Paint the superpixels with their average color
 if len(unique(labels)) < 10000:
 	imgColor = np.empty_like(imgRGB)
 	for l in unique(labels):
-		imgColor[labels==l] = imgRGB[l/img.shape[1], l-img.shape[1]*(l/img.shape[1])]#imgRGB[labels==l][0]#.mean(0)
+		imgColor[labels==l] = imgRGB[labels==l].mean(0)
 	imshow(imgColor)
 
 '''
@@ -74,7 +76,7 @@ cdef extern from "../quickshift.h":
 	cdef vl_qs_type vl_quickshift_get_kernel_size(VlQS*)
 
 
-def quickshift_2D(np.ndarray[np.double_t, ndim=2] im, double kernelSize=5, double maxDist=-1):#, bool medoid=False):
+def quickshift_2D(np.ndarray[np.double_t, ndim=2] im, double kernelSize=2, double maxDist=-1):#, bool medoid=False):
 	cdef int height = im.shape[0]
 	cdef int width = im.shape[1]
 	cdef int channels = 1
@@ -87,7 +89,7 @@ def quickshift_2D(np.ndarray[np.double_t, ndim=2] im, double kernelSize=5, doubl
 
 	obj = vl_quickshift_new(<double*>im.data, height, width, channels)
 
-	# Set kernel size, max distance, and if medoid enabled
+	# Set kernel size, max distance
 	vl_quickshift_set_kernel_size (obj, kernelSize)
 	if maxDist > 0:
 		vl_quickshift_set_max_dist(obj, maxDist)
@@ -123,7 +125,7 @@ def quickshift_2D(np.ndarray[np.double_t, ndim=2] im, double kernelSize=5, doubl
 
 
 
-def quickshift_3D(np.ndarray[np.double_t, ndim=3] im, double kernelSize=5, double maxDist=-1):#, bool medoid=False):
+def quickshift_3D(np.ndarray[np.double_t, ndim=3] im, double kernelSize=2, double maxDist=-1):#, bool medoid=False):
 	cdef int height = im.shape[0]
 	cdef int width = im.shape[1]
 	cdef int channels = 3
@@ -136,7 +138,7 @@ def quickshift_3D(np.ndarray[np.double_t, ndim=3] im, double kernelSize=5, doubl
 
 	obj = vl_quickshift_new(<double*>im.data, height, width, channels)
 
-	# Set kernel size, max distance, and if medoid enabled
+	# Set kernel size, max distance
 	vl_quickshift_set_kernel_size (obj, kernelSize)
 	if maxDist > 0:
 		vl_quickshift_set_max_dist(obj, maxDist)
@@ -147,7 +149,6 @@ def quickshift_3D(np.ndarray[np.double_t, ndim=3] im, double kernelSize=5, doubl
 	parents = vl_quickshift_get_parents(obj)
 	distances = vl_quickshift_get_dists(obj)
 	density_ = vl_quickshift_get_density(obj)
-
 
 	# For each pixel we must follow the trail to get to the topmost node Get base label
 	for i in range(height*width):
@@ -163,7 +164,7 @@ def quickshift_3D(np.ndarray[np.double_t, ndim=3] im, double kernelSize=5, doubl
 	cdef np.npy_intp shape[2]
 	shape[0] = height
 	shape[1] = width
-	npLabels = np.PyArray_SimpleNewFromData(2, shape, np.NPY_UINT32, <int*>parents)
+	npLabels = np.PyArray_SimpleNewFromData(2, shape, np.NPY_INT32, <void*>parents)
 	dists = np.PyArray_SimpleNewFromData(2, shape, np.NPY_DOUBLE, <void*>distances)
 	density = np.PyArray_SimpleNewFromData(2, shape, np.NPY_DOUBLE, <void*>density_)
 
