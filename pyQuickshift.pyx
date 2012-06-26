@@ -21,24 +21,27 @@ Run the following in the pyQuickshift folder:
 python setup.py build_ext --inplace
 
 --Example Usage--
+
 import Image
 import numpy as np
 import pyQuickShift as qs
-img = Image.open('/Users/colin/libs/vlfeat/data/a.jpg')
 
-# Convert to a normalized double
-img = np.array(img, dtype = double)
-# img /= img.max()
-img += np.random.rand(img.shape[0], img.shape[1], 3)/1000
-# img = (img - img.min - (img.max()-img.min())
-# img /= img.max()
-labels, dists, density = qs.quickshift_3D(img, 2, 20, True)
+imgRaw = Image.open('/Users/colin/libs/vlfeat/data/a.jpg')
+imgRGB = np.array(imgRaw, dtype=uint8)
+img = np.array(imgRaw, dtype=double)
+# img = img.reshape([img.shape[2], img.shape[0], img.shape[1]])
+
+im2D = np.copy(img[:,:,2])
+# labels, dists, density = qs.quickshift_2D(im2D*.5, 2, 20)
+labels, dists, density = qs.quickshift_3D(img*.05, 2, 20)
+
 print "There are", len(unique(labels)), "superpixels"
 
-imgColor = np.empty_like(img)
-for l in unique(labels):
-	imgColor[labels==l] = img[labels==l].mean(0)
-imshow(imgColor)
+if len(unique(labels)) < 10000:
+	imgColor = np.empty_like(imgRGB)
+	for l in unique(labels):
+		imgColor[labels==l] = imgRGB[l/img.shape[1], l-img.shape[1]*(l/img.shape[1])]#imgRGB[labels==l][0]#.mean(0)
+	imshow(imgColor)
 
 '''
 
@@ -75,44 +78,46 @@ def quickshift_2D(np.ndarray[np.double_t, ndim=2] im, double kernelSize=5, doubl
 	cdef int height = im.shape[0]
 	cdef int width = im.shape[1]
 	cdef int channels = 1
+	cdef int old, new
 
-	cdef VlQS* obj = vl_quickshift_new(<double*>im.data, height, width, channels)
+	cdef VlQS* obj
+	cdef int* parents
+	cdef vl_qs_type* distances
+	cdef vl_qs_type* density_
+
+	obj = vl_quickshift_new(<double*>im.data, height, width, channels)
 
 	# Set kernel size, max distance, and if medoid enabled
 	vl_quickshift_set_kernel_size (obj, kernelSize)
 	if maxDist > 0:
 		vl_quickshift_set_max_dist(obj, maxDist)
 
-	# if medoid == True:
-	# 	vl_quickshift_set_medoid(obj, True)
-	# else:
-	# 	vl_quickshift_set_medoid(obj, False)
-	
 	# Process
 	vl_quickshift_process(obj)
 	# Get data
-	cdef int* parents = vl_quickshift_get_parents(obj)
-	cdef vl_qs_type* distances = vl_quickshift_get_dists(obj)
-	cdef vl_qs_type* density_ = vl_quickshift_get_density(obj)
+	parents = vl_quickshift_get_parents(obj)
+	distances = vl_quickshift_get_dists(obj)
+	density_ = vl_quickshift_get_density(obj)
 
 	# For each pixel we must follow the trail to get to the topmost node Get base label
-	cdef int i2
 	for i in range(height*width):
 		while 1:
-			i2 = parents[i]
-			new = parents[i2]
+			old = parents[i]
+			new = parents[old]
 			# If at uppermost node, break
-			if new == i2:
+			if new == old:
 				break
 			else:
 				parents[i] = new
 
+	cdef np.npy_intp shape[2]
+	shape[0] = height
+	shape[1] = width
+	npLabels = np.PyArray_SimpleNewFromData(2, shape, np.NPY_INT32, <void*>parents)
+	dists = np.PyArray_SimpleNewFromData(2, shape, np.NPY_DOUBLE, <void*>distances)
+	density = np.PyArray_SimpleNewFromData(2, shape, np.NPY_DOUBLE, <void*>density_)
 
-	npLabels = np.PyArray_SimpleNewFromData(2, [height,width], np.NPY_UINT32, <void*>parents)
-	dists = np.PyArray_SimpleNewFromData(2, [height,width], np.NPY_DOUBLE, <void*>distances)
-	density = np.PyArray_SimpleNewFromData(2, [height,width], np.NPY_DOUBLE, <void*>density_)
-
-	vl_quickshift_delete (obj)
+	# vl_quickshift_delete (obj)
 
 	return npLabels, dists, density
 
@@ -122,43 +127,46 @@ def quickshift_3D(np.ndarray[np.double_t, ndim=3] im, double kernelSize=5, doubl
 	cdef int height = im.shape[0]
 	cdef int width = im.shape[1]
 	cdef int channels = 3
+	cdef int old, new
 
+	cdef VlQS* obj
+	cdef int* parents
+	cdef vl_qs_type* distances
+	cdef vl_qs_type* density_
 
-
-	cdef VlQS* obj = vl_quickshift_new(<double*>im.data, height, width, channels)
+	obj = vl_quickshift_new(<double*>im.data, height, width, channels)
 
 	# Set kernel size, max distance, and if medoid enabled
 	vl_quickshift_set_kernel_size (obj, kernelSize)
 	if maxDist > 0:
 		vl_quickshift_set_max_dist(obj, maxDist)
-	# if medoid == 1:
-	# 	vl_quickshift_set_medoid(obj, True)
-	# else:
-	# 	vl_quickshift_set_medoid(obj, False)
 
 	# Process
 	vl_quickshift_process(obj)
 	# Get data
-	cdef int* parents = vl_quickshift_get_parents(obj)
-	cdef vl_qs_type* distances = vl_quickshift_get_dists(obj)
-	cdef vl_qs_type* density_ = vl_quickshift_get_density(obj)
+	parents = vl_quickshift_get_parents(obj)
+	distances = vl_quickshift_get_dists(obj)
+	density_ = vl_quickshift_get_density(obj)
+
 
 	# For each pixel we must follow the trail to get to the topmost node Get base label
-	cdef int i2
 	for i in range(height*width):
 		while 1:
-			i2 = parents[i]
-			new = parents[i2]
+			old = parents[i]
+			new = parents[old]
 			# If at uppermost node, break
-			if new == i2:
+			if new == old:
 				break
 			else:
 				parents[i] = new
 
-	npLabels = np.PyArray_SimpleNewFromData(2, [height,width], np.NPY_UINT32, <void*>parents)
-	dists = np.PyArray_SimpleNewFromData(2, [height,width], np.NPY_DOUBLE, <void*>distances)
-	density = np.PyArray_SimpleNewFromData(2, [height,width], np.NPY_DOUBLE, <void*>density_)
+	cdef np.npy_intp shape[2]
+	shape[0] = height
+	shape[1] = width
+	npLabels = np.PyArray_SimpleNewFromData(2, shape, np.NPY_UINT32, <int*>parents)
+	dists = np.PyArray_SimpleNewFromData(2, shape, np.NPY_DOUBLE, <void*>distances)
+	density = np.PyArray_SimpleNewFromData(2, shape, np.NPY_DOUBLE, <void*>density_)
 
-	vl_quickshift_delete (obj)
+	# vl_quickshift_delete (obj)
 
 	return npLabels, dists, density
